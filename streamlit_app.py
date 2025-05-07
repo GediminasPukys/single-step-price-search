@@ -93,13 +93,28 @@ with tab1:
             )
 
 
-    # Define a simpler approach - don't use Pydantic models for parsing
-    # Instead, we'll process the JSON directly
+    # Define Pydantic models for response parsing - EXACTLY as in the working example
+    class ProductPrice(BaseModel):
+        provider: str
+        provider_website: str
+        provider_url: str
+        product_name: str
+        product_properties: str
+        product_sku: str
+        product_price: str
+        price_per_: str
+        evaluation: str
+
+
+    class ProductList(BaseModel):
+        products: list[ProductPrice]
+
 
     # Function to search and analyze products
     def search_and_analyze_products(category, product_name, tech_spec, price_calc_objective, api_key):
         client = OpenAI(api_key=api_key)
 
+        # Construct the prompt exactly as in the working example
         prompt = f"""
         Analyze the Lithuanian market for {category} and gather detailed product information according to the following:
                      product name: {product_name}
@@ -158,52 +173,33 @@ with tab1:
         """
 
         try:
-            # Use the OpenAI chat completions API instead of the parse function
-            completion = client.chat.completions.create(
-                model="gpt-4o-search-preview",
-                web_search_options={
+            # Use the exact approach provided in the working example
+            response = client.responses.parse(
+                model="gpt-4.1",
+                tools=[{
+                    "type": "web_search_preview",
                     "user_location": {
                         "type": "approximate",
                         "country": "LT",
                         "city": "Vilnius",
                     }
-                },
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.2
+                }],
+                temperature=0.2,
+                input=prompt,
+                text_format=ProductList,
             )
 
-            response_text = completion.choices[0].message.content
-
-            # Process the response
-            try:
-                # Try to parse JSON from response
-                import re
-                json_match = re.search(r'(\[\s*{.*}\s*\]|\{\s*"products"\s*:\s*\[.*\]\s*\})', response_text, re.DOTALL)
-
-                if json_match:
-                    json_str = json_match.group(0)
-                    products_data = json.loads(json_str)
-                else:
-                    products_data = json.loads(response_text)
-
-                # Check if the response is a list or contains a 'products' key
-                if isinstance(products_data, dict) and "products" in products_data:
-                    products_json = products_data["products"]
-                else:
-                    products_json = products_data
-            except Exception as e:
-                st.error(f"Could not parse JSON from API response: {str(e)}")
-                products_json = []
+            # Process the response exactly as in the working example
+            products_json = []
+            for product in response.output_parsed.products:
+                products_json.append(product.model_dump())
 
             return products_json
 
         except Exception as e:
             st.error(f"API request failed: {str(e)}")
+            # Show the error details for debugging
+            st.error(f"Error details: {e}")
             return []
 
 
@@ -268,8 +264,12 @@ with tab1:
                     st.subheader("Product Properties")
                     properties = product.get('product_properties', {})
                     if properties:
-                        for key, value in properties.items():
-                            st.markdown(f"**{key}:** {value}")
+                        # Handle both string and dictionary formats for product_properties
+                        if isinstance(properties, dict):
+                            for key, value in properties.items():
+                                st.markdown(f"**{key}:** {value}")
+                        else:
+                            st.write(properties)
                     else:
                         st.write("No detailed properties available.")
 
@@ -290,7 +290,7 @@ with tab1:
 
         with st.spinner(
                 f"Analyzing Lithuanian market for {product_name} in {product_category} category... (this may take 1-2 minutes)"):
-            # Single search approach
+            # Single search approach using the working example
             all_products = search_and_analyze_products(
                 product_category,
                 product_name,
@@ -378,7 +378,7 @@ with tab3:
     st.header("About This Application")
 
     st.markdown("""
-    ## Lithuanian Market Product Analyzer (Single Search Version)
+    ## Lithuanian Market Product Analyzer
 
     This application helps you find and compare products available in the Lithuanian market
     based on technical specifications you provide. It leverages the OpenAI API to search
