@@ -93,27 +93,8 @@ with tab1:
             )
 
 
-    # Define Pydantic models for response parsing
-    class ProductPrice(BaseModel):
-        provider: str
-        provider_website: str
-        provider_url: str
-        product_name: str
-        product_properties: Dict[str, str]
-        product_sku: str
-        product_price: float
-        evaluation: str
-        # Optional fields for price calculations
-        price_per_unit: Optional[float] = None
-        price_per_kg: Optional[float] = None
-        price_per_liter: Optional[float] = None
-        price_per_package: Optional[float] = None
-        unit_type: Optional[str] = None
-
-
-    class ProductList(BaseModel):
-        products: List[ProductPrice]
-
+    # Define a simpler approach - don't use Pydantic models for parsing
+    # Instead, we'll process the JSON directly
 
     # Function to search and analyze products
     def search_and_analyze_products(category, product_name, tech_spec, price_calc_objective, api_key):
@@ -177,25 +158,47 @@ with tab1:
         """
 
         try:
-            # Use the exact approach provided by the user
-            response = client.responses.parse(
-                model="gpt-4.1",
-                tools=[{
-                    "type": "web_search_preview",
+            # Use the OpenAI chat completions API instead of the parse function
+            completion = client.chat.completions.create(
+                model="gpt-4o-search-preview",
+                web_search_options={
                     "user_location": {
                         "type": "approximate",
                         "country": "LT",
                         "city": "Vilnius",
                     }
-                }],
-                temperature=0.2,
-                input=prompt,
-                text_format=ProductList,
+                },
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.2
             )
 
-            products_json = []
-            for product in response.output_parsed.products:
-                products_json.append(product.model_dump())
+            response_text = completion.choices[0].message.content
+
+            # Process the response
+            try:
+                # Try to parse JSON from response
+                import re
+                json_match = re.search(r'(\[\s*{.*}\s*\]|\{\s*"products"\s*:\s*\[.*\]\s*\})', response_text, re.DOTALL)
+
+                if json_match:
+                    json_str = json_match.group(0)
+                    products_data = json.loads(json_str)
+                else:
+                    products_data = json.loads(response_text)
+
+                # Check if the response is a list or contains a 'products' key
+                if isinstance(products_data, dict) and "products" in products_data:
+                    products_json = products_data["products"]
+                else:
+                    products_json = products_data
+            except Exception as e:
+                st.error(f"Could not parse JSON from API response: {str(e)}")
+                products_json = []
 
             return products_json
 
